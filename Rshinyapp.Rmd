@@ -1,0 +1,175 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+References for R shiny app: 
+https://rstudio.github.io/shinydashboard/get_started.html
+https://medium.freecodecamp.org/build-your-first-web-app-dashboard-using-shiny-and-r-ec433c9f3f6c
+https://shiny.rstudio.com/images/shiny-cheatsheet.pdf
+
+Installing the required packages
+```{r}
+
+inst_package <- function(pkg_name_list) {
+  instld_pkgs <- as.vector(installed.packages()[, 1])
+  for (pkg in pkg_name_list) {
+  ifelse(pkg %in% instld_pkgs, print(paste(pkg, "- Package already installed")), print(paste('installing package..',pkg, install.packages(pkg)|library(pkg))))
+  }
+}
+
+pkg_name_list <- c('ggplot2','shiny','shinydashboard','dplyr','rsconnect')
+inst_package(pkg_name_list)
+
+```
+
+Loading the required packages
+```{r}
+# load the required packages
+library(shiny)
+require(shinydashboard)
+library(ggplot2)
+library(dplyr)
+
+
+#install.packages('rsconnect')
+
+```
+
+Minimum dashboard 
+```{r}
+## ui.R ##
+library(shinydashboard)
+
+dashboardPage(
+  dashboardHeader(),
+  dashboardSidebar(),
+  dashboardBody()
+)
+```
+
+as a single-app function:
+```{r}
+## app.R ##
+
+ui <- dashboardPage(
+  dashboardHeader(title = "Basic dashboard"),
+  dashboardSidebar(),
+  dashboardBody(
+    # Boxes need to be put in a row (or column)
+    fluidRow(
+      box(plotOutput("plot1", height = 250)),
+      box(
+        title = "Controls",
+        sliderInput("slider", "Number of observations:", 1, 100, 50)
+      )
+    )
+  )
+)
+
+server <- function(input, output) {
+  set.seed(122)
+  histdata <- rnorm(500)
+  output$plot1 <- renderPlot({
+    data <- histdata[seq_len(input$slider)]
+    hist(data)
+  })
+  }
+
+
+shinyApp(ui, server)
+```
+
+Reading a file:
+
+```{r}
+## Only run examples in interactive R sessions
+if (interactive()) {
+
+ui <- fluidPage(
+  sidebarLayout(
+    sidebarPanel(
+      fileInput("file1", "Choose CSV File",
+        accept = c(
+          "text/csv",
+          "text/comma-separated-values,text/plain",
+          ".csv")
+        ),
+      tags$hr(),
+      checkboxInput("header", "Header", TRUE)
+    ),
+    mainPanel(
+      tableOutput("contents")
+    )
+  )
+)
+
+server <- function(input, output) {
+  output$contents <- renderTable({
+    # input$file1 will be NULL initially. After the user selects
+    # and uploads a file, it will be a data frame with 'name',
+    # 'size', 'type', and 'datapath' columns. The 'datapath'
+    # column will contain the local filenames where the data can
+    # be found.
+    inFile <- input$file1
+    if (is.null(inFile))
+      return(NULL)
+    dataset <- read.csv(inFile$datapath, header = input$header, sep = ';')
+  })
+}
+
+shinyApp(ui, server)
+}
+```
+
+version 1
+```{r}
+## app.R ##
+if (interactive()) {
+  
+ui <- dashboardPage(
+  dashboardHeader(title = "Basic dashboard"),
+  dashboardSidebar(),
+  dashboardBody(
+    # Boxes need to be put in a row (or column)
+    fluidRow(
+      box(fileInput("file1", "Upload Data : Choose CSV File",
+        accept = c(
+          "text/csv",
+          "text/comma-separated-values,text/plain",
+          ".csv")
+        ),
+      tags$hr(),
+      checkboxInput("header", "Header", TRUE)),
+    fluidRow(column(width = 12),
+             tableOutput("contents"))
+    )
+  )
+)
+
+
+server <- function(input, output) {
+  output$contents <- renderTable({
+    # input$file1 will be NULL initially. After the user selects
+    # and uploads a file, it will be a data frame with 'name',
+    # 'size', 'type', and 'datapath' columns. The 'datapath'
+    # column will contain the local filenames where the data can
+    # be found.
+    inFile <- input$file1
+    if (is.null(inFile))
+      return(NULL)
+    dataset <- read.csv(inFile$datapath, header = input$header, sep=';')
+      })
+    }
+}
+
+shinyApp(ui, server)
+}
+
+
+```
+
+```{r}
+
+```
+

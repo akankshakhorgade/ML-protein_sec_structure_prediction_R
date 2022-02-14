@@ -1,0 +1,658 @@
+---
+title: "In-silico prediction of the Protein Structure Folding"
+submitted by: Akanksha Khorgade
+output:
+  html_document:
+    df_print: paged
+---
+Dataset: The dataset is 'Structural Protein Sequences' picked from the github repo: 
+pdb_full:- 
+
+Summary: The dataset is derived from Research Collaboratory for Structural Bioinformatics (RCSB) Protein Data Bank (PDB). There are two datasets that we would use for our analysis,
+1.prot_full.csv has been fetched from the RCBS protein database by using the structure ids for pure protein structures.
+2.protein_.csv that contains protein structure data for more than 400,000 proteins including hybrid compositions.
+
+CRISP-DM Phase:
+
+Business Understanding- The objective is to predict the structure of the proteins or categorize it into one of the 3 most common types of secondary structures
+alpha (α) helix structure, beta (β) pleated sheet and gamma loop.
+
+Data Understanding- The attributes of the data are as below:
+ [1] "structureId"              "classification"           "experimentalTechnique"   
+ [4] "macromoleculeType"        "residueCount"             "resolution"              
+ [7] "structureMolecularWeight" "crystallizationMethod"    "crystallizationTempK"    
+[10] "densityMatthews"          "densityPercentSol"        "pdbxDetails"             
+[13] "phValue"                  "publicationYear"          "sequence"                
+[16] "Protein.Analysis"         "Aromaticity"              "Instability.Index"       
+[19] "pI"                       "Gravy"                    "Helix.."                 
+[22] "Turn.."                   "Sheet.."
+
+Data Preparation- Data exploration revealed there are certain attributes with many missing values. Further analysis would be required to decide whether those can be imputed in from other resources or attributes with missing values need to be omiited if they aren't crucial for our prediction. The data has 54274 entries, we will divide it into two sub sets for training and validation.
+
+Data Modeling- Models used: Naive Bayes, c5.0 decision tree, Neural Net and Randaom Forest in Ensemble methods. 10-cross validation performed.
+
+Evaluating Performance:
+The performance of the models are compared on the basis of Accuracy calculated using Confusion Matrix table.
+
+
+1.Setting up the environment:
+Installing pacakages required and loading them:
+```{r}
+inst_package <- function(pkg_name_list) {
+  instld_pkgs <- as.vector(installed.packages()[, 1])
+  for (pkg in pkg_name_list) {
+  ifelse(pkg %in% instld_pkgs, print(paste('Already installed package - ',pkg)), 
+         print(paste('installing package..',pkg, install.packages(pkg)))
+         )
+     library(pkg, character.only = TRUE)
+  }
+}
+
+pkg_name_list <- c('magrittr','caret','psych','cowplot','C50','randomForest','gmodels','neuralnet','e1071','shiny','shinydashboard','dplyr','rsconnect')
+inst_package(pkg_name_list)
+```
+
+2.Loading the data:
+
+```{r}
+protein_data <- read.csv("/Users/akankshakhorgade/Desktop/Bioinfo/DA5030/Proj/pdb_data_no_dups.csv")
+
+names(protein_data)
+
+na.vals <- c(which(is.na(protein_data)))
+print(paste("Num of NA values:", (length(na.vals))))
+
+summary(protein_data$macromoleculeType)
+```
+
+The database from the intial PDB pull has 150594 of NA values. This is because it is not just for protein but also for hybrid structures like DNA-RNA hybrid Protein-DNA hybrids and others. 
+Thus we pull new data from RCSB PDB for only Id's that are pure proteins.
+We extract more fields or attributes from PDB database for our analysis.
+
+Data Imputation:
+
+The data imputation strategy used was to pull complete data from the source as it was possible to do so.
+Below is the python script that we used to give to the database to fetch the appended fields to prot_full.csv. 
+We use BioPython Utilities to execute a fetch command on the database using structureId's.
+From this fetch payload we get the field 'sequence'  which we then use to extract rest of our fields namely:
+Protein.Analysis, Aromaticity, Instability.Index, pI, Gravy, Helix%, Turn%, Sheet%
+
+Example Run:
+def get_extra_fields(X):
+     Protein_Analysis=ProteinAnalysis(X)
+     Aromaticity=("%0.2f" % Protein_Analysis.aromaticity())
+     Instability_index=("%0.2f" % Protein_Analysis.instability_index())
+     PI=("%0.2f" % Protein_Analysis.isoelectric_point())
+     Gravy=("%0.2f" % Protein_Analysis.gravy())
+     sec_struc=Protein_Analysis.secondary_structure_fraction()
+     Helix=("%0.2f" % sec_struc[0])
+     Turn=("%0.2f" % sec_struc[1])
+     Sheet=("%0.2f" % sec_struc[2])
+     return Protein_Analysis,Aromaticity,Instability_index,PI,Gravy,Helix,Turn,Sheet
+
+get_extra_fields('SNQEPATILLIDDHPMLRTGVKQLISMAPDITVVGEASNGEQGIELAESLDPDLILLDLNMPGMNGLETLDKLREKSLSGRIVVFSVSNHEEDVVTALKRGADGYLLKDMEPEDLLKALHQAAAGEMVLSEALTPVLAASLRANRATTERDVNQLTPRERDILKLIAQGLPNKMIARRLDITESTVKVHVKHMLKKMKLKSRVEAAVWVHQERIF')
+
+Output:
+('SNQEPATILLIDDHPMLRTGVKQLISMAPDITVVGEASNGEQGIELAESLDPDLILLDLNMPGMNGLETLDKLREKSLSGRIVVFSVSNHEEDVVTALKRGADGYLLKDMEPEDLLKALHQAAAGEMVLSEALTPVLAASLRANRATTERDVNQLTPRERDILKLIAQGLPNKMIARRLDITESTVKVHVKHMLKKMKLKSRVEAAVWVHQERIF', <Bio.SeqUtils.ProtParam.ProteinAnalysis object at 0x7fa829541510>, '0.02', '33.57', '5.73', '-0.16', '0.30', '0.19', '0.36')
+
+For our further analysis we would be using the new data prot_full (provided in the share folder)
+```{r}
+
+pdb_full <- read.csv("/Users/akankshakhorgade/Desktop/Bioinfo/DA5030/Proj/prot_full.csv")
+
+str(pdb_full)
+summary(pdb_full)
+
+```
+
+3. Data Preparation:
+We start with understanding the data, learning more about the feautures and cleaning the data. 
+From the summary we observe that there are certain entries with duplicate structureIds. We want the structureIds to be unique, as in a single entry for every structureId.
+
+```{r}
+
+pdb_no_dups <- pdb_full[!duplicated(pdb_full$structureId), ]
+print(paste('No. of Rows in original data:', nrow(pdb_full)))
+print(paste('No. of Rows with duplicate structureIds removed:', nrow(pdb_no_dups)))
+
+```
+
+We'll first try to understand the attributes better:
+```{r}
+names(pdb_no_dups)
+```
+
+1.structureId : is a unique ID given to the structure within PDB
+
+2.classification: depending upon the function the protein performs biochemically(in the form of enzymes or hormones) it is categorised into one of the 2157 types. 
+```{r}
+length(unique(pdb_no_dups$classification))
+```
+3.experimentalTechnique :  as the name suggests it is the experimental technique used to crystallize the protein structure. We would not be using this field in our analysis.
+
+4.macromoleculeType : it indictes where the molecule type is protein, DNA, RNA, hybrid or other. Since we have seleceted a data with only protein macromolecule we can ignore this field.
+```{r}
+unique(pdb_no_dups$macromoleculeType)
+```
+5.residueCount : residueCount here refers to the number of amino acid residues in the given chain. In simple words, it is the number of characters with the sequence attribute. Residue count is essntially the length of the chain and it would be useful for our prediction.
+
+6.resolution : As quoted on the RCSB site, 'Resolution is a measure of the quality of the data that has been collected on the crystal containing the protein or nucleic acid.' It is for the graphical analysis of the structure of the protein and we would not be using this field.
+
+7.structureMolecularWeight : is the molecular weight as the name suggests. We would need this for the analysis.
+
+8.crystallizationMethod and 9.crystallizationTempK are the indicative of experimental conditions of crystallisation and we would not be using them.
+
+10.densityMatthews : The density of the crystal structure. We would be using this attribute as density is one of the crucial structural properties.
+
+11.densityPercentSol : is the density of the solution at which the crystal was grown
+12.pdbxDetails : contain the details of the conditions in which the protein was crystallised. We would not be using this field.
+13.phValue :  is the pH for the protein.
+14.publicationYear : is the year when the struvture was added into the PDB database
+15.sequence : is the Amino Acis is sequence fasta format
+16.Protein.Analysis : we would be ignoring this value since it refers to the fetch command made to the database using BioPython Utils ProtParam.
+17.Aromaticity 18.Instability.Index and 19. pI that isoelcetric point 20.Gravy that signifies hydrophobicity are all features of the crystal which could be very useful for our analysis.
+21.Helix.. 22.Turn.. and 23.Sheet.. are the percenatge of the respective secondary structures in the protein crystal. 
+We would be categorising these and predicting them for other proteins given the above feature values.
+
+We would not be using all the attributes. Some of the attributes can be de-selected manually without doing a PCA.
+PCA would not be suitable for feature selection since PCA only considers the numerical or statistical significance of the attribute values. It would not consider the biochemical rationale of certain features being crucial to structural integrity of the protein.
+
+
+```{r}
+names(pdb_no_dups)[20] <- "Hydrophobicity"
+names(pdb_no_dups)[21] <- "helix%"
+names(pdb_no_dups)[22] <- "turn%"
+names(pdb_no_dups)[23] <- "sheet%"
+
+```
+
+Checking for outliers:
+
+```{r}
+meanH <- mean(pdb_no_dups$`helix%`)
+sdH <- sd(pdb_no_dups$`helix%`)
+
+devH <- abs(pdb_no_dups$`helix%` - meanH)
+
+nrow(pdb_no_dups[which(devH > 3*sdH),])
+
+#There are 836 outliers for Helix
+
+meanS <- mean(pdb_no_dups$`sheet%`)
+sdS <- sd(pdb_no_dups$`sheet%`)
+
+devS<- abs(pdb_no_dups$`sheet%` - meanS)
+
+nrow(pdb_no_dups[which(devS > 3*sdS),])
+
+#There are 333 outliers for Sheet
+
+meanT <- mean(pdb_no_dups$`turn%`)
+sdT <- sd(pdb_no_dups$`turn%`)
+
+devT<- abs(pdb_no_dups$`turn%` - meanT)
+
+nrow(pdb_no_dups[which(devT > 3*sdT),])
+
+#There are 452 outliers for Sheet
+```
+We would not have to treat these outliers sepearately since we would be categorising the fields and the numerical percentage values would no longer be required.
+
+
+Feature Engineering:
+
+The predictive feature that we are interested that is helix%, turn% and sheet% are present in terms of percentages. We want to be able to categorise the proteins structures into one of the three structures. 
+Thus we categorise the secondary structure type depending upon the percentage contribution of the individual types it is made of. We would broadly categorise a protein by the structure type that contributes most to it's secondary structure.
+Thus we engineer a new feature called secStruct which can have one of the three values 'H' for alpha helix, 'S' for beat sheets or 'T' for turn or gamma loop.
+```{r}
+pdb_no_dups$secStruct <- ifelse(pdb_no_dups$`helix%` > pdb_no_dups$`turn%` & pdb_no_dups$`helix%` >pdb_no_dups$`sheet%`,'H',
+                                ifelse(pdb_no_dups$`turn%` > pdb_no_dups$`helix%` & pdb_no_dups$`turn%` > pdb_no_dups$`sheet%`,'T',
+                                       ifelse(pdb_no_dups$`sheet%`>pdb_no_dups$`helix%` & pdb_no_dups$`sheet%` > pdb_no_dups$`turn%`,'S','NA')))
+
+pdb_final <- pdb_no_dups[,c('structureId',
+                            'classification',
+                            'residueCount',
+                            'structureMolecularWeight',
+                            'densityMatthews',
+                            'densityPercentSol',
+                            'phValue',
+                            'Aromaticity',
+                            'Instability.Index',
+                            'pI',
+                            'Hydrophobicity',
+                            'secStruct')]
+
+pairs.panels(pdb_final)
+```
+
+The pairs.panel fucntion show a strong correlation between residueCount and structureMolecularWeight which is logical. More the number of residues or amino acids more would be the weight of the molecule.
+
+There is a strong correlation between densityMatthews and densityPercentSol which indicates that the protein strcutures that were grown in high density solutions have high density coefficients. We would not be using densityPercentSol for our analysis. Rest of the attributes seem fairly independent.
+
+Removing structureID's with 'NA' values.
+```{r}
+
+structIdsWithNA <- as.vector(pdb_final[c(which(pdb_final$secStruct=="NA")),"structureId"])
+
+pdb_final <- pdb_final[!(pdb_final$structureId %in% structIdsWithNA),]
+table(pdb_final$secStruct)
+
+pdb_final$secStruct <- factor(pdb_final$secStruct)
+```
+
+Analysis of the distribution of data:
+
+```{r}
+
+#classification vs density
+str(pdb_final$classification)
+p1 <- ggplot(as.data.frame(pdb_final$classification))+geom_bar(aes(x = pdb_final$classification), color = "#FF6666")+labs(title="Classification curve",x="classification", y = "count")
+
+ #Residue count vs density
+
+summary(pdb_final$residueCount)
+p2 <- ggplot(as.data.frame(pdb_final$residueCount), aes(x=pdb_final$residueCount)) + 
+ geom_density(alpha=.2, fill="#FF6666")+
+  labs(title="ResCount density curve",x="Residue Count", y = "Density")
+
+#Structural Molecular Weight vs density
+
+p3 <- ggplot(as.data.frame(pdb_final$structureMolecularWeight), aes(x=pdb_final$structureMolecularWeight)) + 
+ geom_density(alpha=.4, fill="#A6761D")+
+  labs(title="Structmolecular wt density curve",x="Structural molecular weight", y = "Density")
+
+#Density Matthews vs density
+
+p4 <- ggplot(as.data.frame(pdb_final$densityMatthews), aes(x=pdb_final$densityMatthews)) + 
+ geom_density(alpha=.3, fill="#1B9E77")+
+  labs(title="Density Matthews density curve",x="Density Matthews", y = "Density")
+
+# Density PercentSol vs density
+
+p5 <- ggplot(as.data.frame(pdb_final$densityPercentSol), aes(x=pdb_final$densityPercentSol)) + 
+ geom_density(alpha=.6, fill="#D95F02")+
+  labs(title="Density PctSol density curve",x="Density Pctsol", y = "Density")
+
+#phValue vs density
+
+p6 <- ggplot(as.data.frame(pdb_final$phValue), aes(x=pdb_final$phValue)) + 
+ geom_density(alpha=.8, fill="#7570B3")+
+  labs(title="phValue density curve",x="phValue", y = "Density")
+
+#Aromaticity vs density
+
+p7 <- ggplot(as.data.frame(pdb_final$Aromaticity), aes(x=pdb_final$Aromaticity)) + 
+ geom_density(alpha=.6, fill="#E7298A")+
+  labs(title="Aromaticity density curve",x="Aromaticity", y = "Density")
+
+
+#Instability.Index vs density
+
+p8 <- ggplot(as.data.frame(pdb_final$Instability.Index), aes(x=pdb_final$Instability.Index)) + 
+ geom_density(alpha=.6, fill="#FFCC00")+
+  labs(title="Instability.Index density curve",x="InstabilityIndex", y = "Density")
+
+# pi vs denisty
+
+p9 <- ggplot(as.data.frame(pdb_final$pI), aes(x=pdb_final$pI)) + 
+ geom_density(alpha=.6, fill="#0000FF")+
+  labs(title="pI vs density curve",x="pI", y = "Density")
+
+
+#Hydrophobicity vs density
+
+p10 <- ggplot(as.data.frame(pdb_final$Hydrophobicity), aes(x=pdb_final$Hydrophobicity)) + 
+ geom_density(alpha=.6, fill="#FFFF00")+
+  labs(title="Hydrophobicity vs density curve",x="Hydrophobicty", y = "Density")
+
+#secStruct vs density
+
+
+p11 <- ggplot(as.data.frame(pdb_final$secStruct))+geom_bar(aes(x = pdb_final$secStruct), color = "#E0FFFF")+labs(title="secStruct density curve",x="secStruct", y = "count")
+
+
+plot1 <- plot_grid(p2,p3,p4,p5)
+plot2 <- plot_grid(p6,p7,p8,p9)
+plot3 <- plot_grid(p10,p11)
+
+plot1
+plot2
+plot3
+```
+
+
+From the plots above we observe that while some attributes are normally distributed while some are completely skewed on a side or have multiple peaks. 
+Thus we normalise the data using neighbors before building our models.
+
+```{r}
+
+normalize <- function(x) {
+    return((x - min(x)) / (max(x) - min(x)))
+}
+
+pdb_final_norm <- pdb_final
+pdb_final_norm[3:11] <- as.data.frame(lapply(pdb_final[3:11], normalize))
+
+```
+
+Dividing the data into training and validation:
+```{r}
+
+set.seed(3456)
+indxSplit <- createDataPartition(y = pdb_final$secStruct,p = 2/3,list = FALSE)
+training <- pdb_final_norm[indxSplit,]
+testing <- pdb_final_norm[-indxSplit,]
+
+prop.table(table(pdb_final_norm$secStruct))
+prop.table(table(training$secStruct))
+prop.table(table(testing$secStruct))
+
+```
+
+
+MODEL No. 1:
+
+Applying Decision Tree:
+Removing structureId and Classification:
+```{r}
+names(pdb_final_norm[,3:11])
+pdb_C5 <- C5.0(training[,3:11], training$secStruct)
+pdb_C5
+#summary(pdb_C5)
+```
+
+predictions:
+
+```{r}
+c5_pred <- predict(pdb_C5, testing)
+
+CrossTable(testing$secStruct, c5_pred,
+             prop.chisq = FALSE, prop.c = FALSE, prop.r = FALSE,
+             dnn = c('actual default', 'predicted default'))
+
+
+c5_boost10 <- C5.0(training[,3:11], training$secStruct, trials = 10)
+c5_boost10
+#summary(c5_boost10)
+c5_pred10 <- predict(c5_boost10, testing)
+
+confusionMatrix(c5_pred10, testing$secStruct)
+```
+Since we have more than two classes we can't uses ROC to evaluate model performance since ROCR supoorts only evaluation of binary classification.
+
+Thus we use confusion matrix to find the Accuracy.
+Accuracy of the Decision Tree model with C5.0 is 86.697%.
+
+After doing our initial analysis with a Decision tree model we got the accuracy of 86.69% which implies the data is suitable for classification models. 
+
+We would now run K-fold cross validation on the data for few other classification models like neural net, randon forest and Naives Bayes. 
+
+K-fold cross validation with k = 10:
+
+```{r}
+set.seed(3456)
+
+controlParameters <- trainControl(method = 'cv',
+                                  number = 10,
+                                  savePredictions = TRUE,
+                                  classProbs = TRUE)
+
+#names(getModelInfo())
+k10_modelNNet <- train(secStruct ~ residueCount+structureMolecularWeight+densityMatthews+densityPercentSol+phValue+Aromaticity+Instability.Index+pI+Hydrophobicity,
+                     data = training,
+                     method = 'nnet',
+                     trControl = controlParameters,
+                     preProcess = c('center','scale')
+                     )
+k10_modelNNet 
+
+
+k10_nb <- train(secStruct ~ residueCount+structureMolecularWeight+densityMatthews+densityPercentSol+phValue+Aromaticity+Instability.Index+pI+Hydrophobicity,
+                     data = training,
+                     method = 'nb',
+                     trControl = controlParameters,
+                     preProcess = c('center','scale')
+                     )
+k10_nb
+
+```
+
+For nnet, the final values used for the model were size = 5 and decay = 0.0001 which gives the accuracy of 78.578%
+
+While trying to build the k-cross validation for SVM we actually observe how computationally intensive it is and since we do have other models which are able to predict values with fairly good accuracies we would not be using SVM for our analysis.
+
+For Naive Bayes, we get the Accuracy with kernel to be 73.30, Out of the 3 models, this is the lowest we would fine tune the model to improve it's accuracy.
+
+The two other models that we would be using are Neural Net and Naive Bayes. We would use Random forest as our Ensemble Method.
+
+MODEL No.2
+
+Neural Network:
+
+Constructing the model:
+```{r}
+nnet_pred <- predict(k10_modelNNet, testing)
+confusionMatrix(nnet_pred, testing$secStruct)
+```
+
+The accuracy for Neural Net is 77.36% which is very good. With 10-cross validation the risk of overfitting is reduced.
+
+MODEL No.3:
+
+Naive Bayes:
+Naive Bayes assumes that for a given secondary structure the identities of adjacent residues within the protein are independent. This is in general in correct. The position of the residues within the protein is very crucial since they impart the Hydrogen bonding properties which mainly result in protein folding. 
+Even then, running Naive Bayes gives us insight to the prabability distributions and hence we include the method here.
+```{r}
+nb_pred <- predict(k10_nb, testing)
+confusionMatrix(nb_pred, testing$secStruct)
+```
+
+Tuning the Naive Bayes model with tuning parameter Laplace=1:
+
+```{r}
+nb_mod_laplace <- naiveBayes(training[,3:12], training$secStruct,laplace = 1)
+nb_mod_laplace
+nb_pred_laplace <- predict(nb_mod_laplace, testing[,3:12])
+confusionMatrix(nb_pred_laplace,testing$secStruct)
+```
+
+Upon fine tuning the Naive Bayes Classifier with Laplace=1, the performance of the model dramatically improves to an accuracy of 99.7%. The Kappa goes to 0.99 indicating a very good agreement between the model's prediction and true values.
+Though this accuaracy is very high it indicates aggressive classification which might be an indicative of overfitting. Since the data we provided is numerical and Naives Bayes is more suitable for categorical data we would try to use other models for our predictoion.
+
+Comparison of the three models, can be done on the basis of Accuracy,
+For C.5 decision tree model with boosting, the accuracy comes out to be, 86.697%.
+For neural net, gives the accuracy of 77.36%.
+For Naive Bayes with Laplace estimator = 0, the accuracy comes out to be 73.169%
+
+
+Constructing stacked Ensemble model:
+Since the data seems more suitable for decision trees we would construct a random forest model which is essentially ensemble of decision trees.
+
+```{r}
+set.seed(3456)
+
+k10_rf <- train(secStruct ~ residueCount+structureMolecularWeight+densityMatthews+densityPercentSol+phValue+Aromaticity+Instability.Index+pI+Hydrophobicity,
+                     data = training,
+                     method = 'rf',
+                     trControl = controlParameters,
+                     preProcess = c('center','scale')
+                     )
+k10_rf
+
+```
+
+Building Random Forest with normalisation and mtry=5, the 10 cross validation for it gives accuracy of 87.641
+
+In one of the test run, I tried constructing the random forest without normalising the data, 10-cross validation and mtry=5,the accuracy came out to be 87.7257 which is approx. the same as the accuracy we get with normalised data. Thus, we confirm our point that the predictions with decision trees are independent of the data distribution.
+
+
+Now we'll build the Random Forest model without k cross validation and find the predicted values for secondary structures.
+```{r}
+
+set.seed(300)
+rf <- randomForest(secStruct ~ residueCount+structureMolecularWeight+densityMatthews+densityPercentSol+phValue+Aromaticity+Instability.Index+pI+Hydrophobicity, mtry=5, data = pdb_final_norm)
+
+rf
+
+```
+
+OOB out-of-bag error rate is estimated to be 10.33% thus the model would predict very accurately for the unknown secondary structures given the structural properties.
+
+```{r}
+
+rf_pred <- predict(rf, testing)
+rf_pred_k10 <- predict(k10_rf, testing)
+print('Confusion Matrix for values predicted without k-fold cross validation')
+confusionMatrix(rf_pred, testing$secStruct)
+
+print('Confusion Matrix for values predicted using 10-fold cross validation')
+confusionMatrix(rf_pred_k10, testing$secStruct)
+
+```
+
+Random Forest gives an accuracy of 100% without k-fold cross validation implying that the model overfits the data. Random forest uses regression trees to predict values which are very sensitive to data changes and hence prone to overfitting.
+
+In order to tackle this problem we performed k-cross validation where data is divided into different bins which are then used in different combinations to train the model, so the model is more versatile and is not too tailored for the same set of data.
+
+The best accuracy was achieved with the Random Forest Model after 10-cross validation with mtry=5 which is 87.641%.
+
+```{r}
+
+Comp_Pred_Val <- data.frame(testing$secStruct, c5_pred10, nnet_pred, nb_pred, rf_pred_k10)
+Accur <- data.frame(ModelName = c("C5 Decision Tree", "Naive Bayes", "Neural Net", "Random Forest"), Accuracy = c("86.697%","73.169%","77.36%","87.641"))
+
+```
+
+Code for Rshiny Dashboard:
+```{r}
+## app.R ##
+#setwd('/Users/akankshakhorgade/Desktop/Bioinfo/DA5030')
+
+if (interactive()) {
+  ui <- dashboardPage(
+  dashboardHeader(title = "ProteinSecStruct Dashboard"),
+  dashboardSidebar(sidebarMenu(
+  menuItem("Data", tabName = "data", icon = icon("table")),
+  menuItem("Visualisations",tabName = "plots",icon = icon("bar-chart-o")),
+  menuItem("Predicted Values", tabName = "pred", icon = icon("table")),
+  menuItem("Accuracy", tabName = "accur", icon = icon("table"))
+  )),
+  dashboardBody(
+    tabItems(
+  # First tab content
+      tabItem(tabName = "data",
+                h3("Data in pdb_final.csv"),
+                tableOutput("contents")
+          ),
+  # Second tab content
+  tabItem(tabName = "plots",
+            h3("Visualisation of Attributes"),
+            h5("Please allow a few mins for the graphs to load."),
+            box(plotOutput("plot1")),
+            box(plotOutput("plot2")),
+            box(plotOutput("plot4")),
+            box(plotOutput("plot3")),
+            box(plotOutput("plot5")),
+            box(plotOutput("plot6")),
+            box(plotOutput("plot7")),
+            box(plotOutput("plot8")),
+            box(plotOutput("plot9")),
+            box(plotOutput("plot10")),
+            box(plotOutput("plot11"))
+          ),
+  # Third tab content
+  tabItem(tabName = "pred",
+          h3("Predicted values from all the models"),
+          tableOutput("predTab")
+  ),
+  # Fourth tab content
+  tabItem(tabName = "accur",
+          h3("Accuracy of the models"),
+          tableOutput("AccurTab")
+  )
+  )
+)
+)
+
+  
+server <- function(input, output) {
+  output$plot1 <- renderPlot({
+    ggplot(as.data.frame(pdb_final$classification))+geom_bar(aes(x = pdb_final$classification), color = "#FF6666")+labs(title="Classification curve",x="classification", y = "count")
+  })
+  output$plot2 <- renderPlot({
+    ggplot(as.data.frame(pdb_final$residueCount), aes(x=pdb_final$residueCount)) + 
+ geom_density(alpha=.2, fill="#FF6666")+
+  labs(title="ResCount density curve",x="Residue Count", y = "Density")
+  })
+  output$plot3 <- renderPlot({
+    ggplot(as.data.frame(pdb_final$structureMolecularWeight), aes(x=pdb_final$structureMolecularWeight)) + 
+ geom_density(alpha=.4, fill="#A6761D")+
+  labs(title="Structmolecular wt density curve",x="Structural molecular weight", y = "Density")
+  })
+  output$plot4 <- renderPlot({
+    ggplot(as.data.frame(pdb_final$densityMatthews), aes(x=pdb_final$densityMatthews)) + 
+ geom_density(alpha=.3, fill="#1B9E77")+
+  labs(title="Density Matthews density curve",x="Density Matthews", y = "Density")
+  })
+  output$plot5 <- renderPlot({
+    ggplot(as.data.frame(pdb_final$densityPercentSol), aes(x=pdb_final$densityPercentSol)) + 
+ geom_density(alpha=.6, fill="#D95F02")+
+  labs(title="Density PctSol density curve",x="Density Pctsol", y = "Density")
+  })
+  output$plot6 <- renderPlot({
+    ggplot(as.data.frame(pdb_final$phValue), aes(x=pdb_final$phValue)) + 
+ geom_density(alpha=.8, fill="#7570B3")+
+  labs(title="phValue density curve",x="phValue", y = "Density")
+  })
+  output$plot7 <- renderPlot({
+    ggplot(as.data.frame(pdb_final$Aromaticity), aes(x=pdb_final$Aromaticity)) + 
+ geom_density(alpha=.6, fill="#E7298A")+
+  labs(title="Aromaticity density curve",x="Aromaticity", y = "Density")
+  })
+  output$plot8 <- renderPlot({
+    ggplot(as.data.frame(pdb_final$Instability.Index), aes(x=pdb_final$Instability.Index)) + 
+ geom_density(alpha=.6, fill="#FFCC00")+
+  labs(title="Instability.Index density curve",x="InstabilityIndex", y = "Density")
+  })
+  output$plot9 <- renderPlot({
+    ggplot(as.data.frame(pdb_final$pI), aes(x=pdb_final$pI)) + 
+ geom_density(alpha=.6, fill="#0000FF")+
+  labs(title="pI vs density curve",x="pI", y = "Density")
+  })
+  output$plot10 <- renderPlot({
+    ggplot(as.data.frame(pdb_final$Hydrophobicity), aes(x=pdb_final$Hydrophobicity)) + 
+ geom_density(alpha=.6, fill="#FFFF00")+
+  labs(title="Hydrophobicity vs density curve",x="Hydrophobicty", y = "Density")
+  })
+  output$plot11 <- renderPlot({
+    ggplot(as.data.frame(pdb_final$secStruct))+geom_bar(aes(x = pdb_final$secStruct), color = "#E0FFFF")+labs(title="secStruct density curve",x="secStruct", y = "count")
+  })
+  output$contents <- renderTable({
+    dataset <- pdb_final[1:100,]
+  })
+  output$predTab <- renderTable({
+    dataset <- Comp_Pred_Val
+  })
+  output$AccurTab <- renderTable({
+    dataset <- Accur
+  })
+  }
+  
+  shinyApp(ui, server)
+}
+
+```
+
+Code for Deployment:
+
+The app is deployed at : https://akankshakda5030.shinyapps.io/proj/
+
+```{r}
+
+#deployApp(appDir = '/Users/akankshakhorgade/Desktop/Bioinfo/DA5030/Proj',appFiles = c('ui.R','server.R'), upload = TRUE)
+
+
+```
+
+
+

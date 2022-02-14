@@ -1,0 +1,81 @@
+```
+Analysis of the distribution of data:
+
+individual distribution of data:
+```{r}
+
+#classification vs density
+str(pdb_final$classification)
+p1 <- ggplot(as.data.frame(pdb_final$classification))+geom_bar(aes(x = pdb_final$classification), color = "#FF6666")+labs(title="Classification curve",x="classification", y = "count")
+
+ #Residue count vs density
+
+summary(pdb_final$residueCount)
+p2 <- ggplot(as.data.frame(pdb_final$residueCount), aes(x=pdb_final$residueCount)) + 
+ geom_density(alpha=.2, fill="#FF6666")+
+  labs(title="ResCount density curve",x="Residue Count", y = "Density")
+
+#Structural Molecular Weight vs density
+
+p3 <- ggplot(as.data.frame(pdb_final$structureMolecularWeight), aes(x=pdb_final$structureMolecularWeight)) + 
+ geom_density(alpha=.4, fill="#A6761D")+
+  labs(title="Structmolecular wt density curve",x="Structural molecular weight", y = "Density")
+
+#Density Matthews vs density
+
+p4 <- ggplot(as.data.frame(pdb_final$densityMatthews), aes(x=pdb_final$densityMatthews)) + 
+ geom_density(alpha=.3, fill="#1B9E77")+
+  labs(title="Density Matthews density curve",x="Density Matthews", y = "Density")
+
+# Density PercentSol vs density
+
+p5 <- ggplot(as.data.frame(pdb_final$densityPercentSol), aes(x=pdb_final$densityPercentSol)) + 
+ geom_density(alpha=.6, fill="#D95F02")+
+  labs(title="Density PctSol density curve",x="Density Pctsol", y = "Density")
+
+#phValue vs density
+
+p6 <- ggplot(as.data.frame(pdb_final$phValue), aes(x=pdb_final$phValue)) + 
+ geom_density(alpha=.8, fill="#7570B3")+
+  labs(title="phValue density curve",x="phValue", y = "Density")
+
+#Aromaticity vs density
+
+p7 <- ggplot(as.data.frame(pdb_final$Aromaticity), aes(x=pdb_final$Aromaticity)) + 
+ geom_density(alpha=.6, fill="#E7298A")+
+  labs(title="Aromaticity density curve",x="Aromaticity", y = "Density")
+
+
+#Instability.Index vs density
+
+p8 <- ggplot(as.data.frame(pdb_final$Instability.Index), aes(x=pdb_final$Instability.Index)) + 
+ geom_density(alpha=.6, fill="#FFCC00")+
+  labs(title="Instability.Index density curve",x="InstabilityIndex", y = "Density")
+
+# pi vs denisty
+
+p9 <- ggplot(as.data.frame(pdb_final$pI), aes(x=pdb_final$pI)) + 
+ geom_density(alpha=.6, fill="#0000FF")+
+  labs(title="pI vs density curve",x="pI", y = "Density")
+
+
+#Hydrophobicity vs density
+
+p10 <- ggplot(as.data.frame(pdb_final$Hydrophobicity), aes(x=pdb_final$Hydrophobicity)) + 
+ geom_density(alpha=.6, fill="#FFFF00")+
+  labs(title="Hydrophobicity vs density curve",x="Hydrophobicty", y = "Density")
+p10
+
+#secStruct vs density
+
+
+p11 <- ggplot(as.data.frame(pdb_final$secStruct))+geom_bar(aes(x = pdb_final$secStruct), color = "#E0FFFF")+labs(title="secStruct density curve",x="secStruct", y = "count")
+p11
+
+
+plot_grid(p2,p3,p4,p5)
+plot_grid(p6,p7,p8,p9)
+plot_grid(p10,p11)
+
+
+```

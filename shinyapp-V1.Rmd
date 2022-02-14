@@ -1,0 +1,130 @@
+---
+title: "Version1"
+output: html_notebook
+---
+
+
+References for R shiny app: 
+https://rstudio.github.io/shinydashboard/get_started.html
+https://medium.freecodecamp.org/build-your-first-web-app-dashboard-using-shiny-and-r-ec433c9f3f6c
+https://shiny.rstudio.com/images/shiny-cheatsheet.pdf
+https://www.rstudio.com/resources/videos/building-dashboards-with-shiny-tutorial/
+
+Installing the required packages
+```{r}
+
+inst_package <- function(pkg_name_list) {
+  instld_pkgs <- as.vector(installed.packages()[, 1])
+  for (pkg in pkg_name_list) {
+  ifelse(pkg %in% instld_pkgs, print(paste('Already installed package - ',pkg)), 
+         print(paste('installing package..',pkg, install.packages(pkg)))
+         )
+     library(pkg, character.only = TRUE)
+  }
+}
+
+pkg_name_list <- c('ggplot2','shiny','shinydashboard','dplyr','rsconnect')
+inst_package(pkg_name_list)
+
+```
+
+
+Version 1 with dashboard:
+```{r}
+## app.R ##
+options(shiny.maxRequestSize=200*1024^2)
+if (interactive()) {
+  
+ui <- dashboardPage(
+  dashboardHeader(title = "Basic dashboard"),
+  dashboardSidebar(),
+  dashboardBody(
+    # Boxes need to be put in a row (or column)
+    fluidRow(
+      box(fileInput("file1", "Upload Data : Choose CSV File",
+        accept = c(
+          "text/csv",
+          "text/comma-separated-values,text/plain",
+          ".csv")
+        ),
+      tags$hr(),
+      checkboxInput("header", "Header", TRUE)),
+    fluidRow(column(width = 12),
+             tableOutput("contents"))
+    )
+  )
+)
+
+
+server <- function(input, output) {
+  output$contents <- renderTable({
+    # input$file1 will be NULL initially. After the user selects
+    # and uploads a file, it will be a data frame with 'name',
+    # 'size', 'type', and 'datapath' columns. The 'datapath'
+    # column will contain the local filenames where the data can
+    # be found.
+    inFile <- input$file1
+    if (is.null(inFile))
+      return(NULL)
+    dataset <- read.csv(inFile$datapath, header = input$header, sep=';')
+      })
+    }
+
+
+shinyApp(ui, server)
+}
+
+```
+
+version 1 with fluidPage:
+```{r}
+## Only run examples in interactive R sessions
+if (interactive()) {
+
+
+  
+  
+ui <- fluidPage(title = "ML Pipeline",
+  sidebarLayout(
+    sidebarPanel(
+      fileInput("file1", "Choose CSV File",
+        accept = c(
+          "text/csv",
+          "text/comma-separated-values,text/plain",
+          ".csv")),
+      checkboxInput("header", "Header", TRUE),
+      tags$hr(),
+      radioButtons("datapart","Method for Dividing Data:",
+                   choices = list("random division" = "random",
+                 "caret-createDataPartition" = "caret"))
+      ),
+    mainPanel(
+      verbatimTextOutput("param"),
+      tableOutput("content")
+    )
+  )
+)
+
+server <- function(input, output) {
+  output$content <- renderTable({
+    # input$file1 will be NULL initially. After the user selects
+    # and uploads a file, it will be a data frame with 'name',
+    # 'size', 'type', and 'datapath' columns. The 'datapath'
+    # column will contain the local filenames where the data can
+    # be found.
+    inFile <- input$file1
+    if (is.null(inFile))
+      return(NULL)
+    dataset <- read.csv(inFile$datapath, header = input$header, sep = ';')
+  })
+  output$param <- renderPrint({part <- switch(input$datapart,
+                   random = random,
+                   caret = caretpkg,
+                   random)
+  })
+}
+
+shinyApp(ui, server)
+}
+```
+
